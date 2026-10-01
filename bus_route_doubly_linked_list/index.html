@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIO Bus Route · Doubly Linked List</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:#f4f8fc;color:#1e3a5f;display:flex;gap:12px;padding:12px;height:100vh}
+  main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  h1{margin:0;font-size:24px} .sub{color:#5b7a99;font-size:13px}
+  #stats{font-weight:700;font-size:13px}
+  .key span{margin-right:12px;font-size:12px;color:#34495e}
+  #canvas{overflow-x:auto;background:#e4f4e8;border-radius:10px;border:1px solid #b9d9c4}
+  #listline{font-family:Consolas,monospace;font-size:13px;background:#e4f0e8;padding:6px 10px;border-radius:6px;word-break:break-word}
+  .bottom{display:flex;gap:8px;flex:1;min-height:120px}
+  #log,#code{flex:1;margin:0;padding:8px;border-radius:6px;font:12px Consolas,monospace;overflow:auto;white-space:pre-wrap}
+  #log{background:#fff;border:1px solid #cfd8e3} #code{background:#1b2333;color:#9be39b}
+  aside{width:290px;background:#fff;border:1px solid #cfd8e3;border-radius:10px;padding:12px;overflow:auto}
+  aside h2{margin:0 0 8px;font-size:16px}
+  label{font-size:12px;display:block;margin-top:6px}
+  input{width:100%;padding:6px;border:1px solid #b8c6d6;border-radius:6px}
+  fieldset{border:1px solid #cfd8e3;border-radius:8px;margin:10px 0 0;padding:6px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+  legend{font-size:12px;color:#5b7a99}
+  button{padding:7px 2px;border:0;border-radius:6px;background:#2f7d5b;color:#fff;font-size:12px;cursor:pointer}
+  button:hover{background:#256548} button.red{background:#c0504d} button.grey{background:#667}
+  fieldset.two{grid-template-columns:1fr 1fr}
+</style>
+</head>
+<body>
+<main>
+  <h1>MIO Bus Route ⇄</h1>
+  <div class="sub">Doubly linked list: each station points to the previous and the next station</div>
+  <div id="stats"></div>
+  <div class="key"><span style="color:#2c3e50">■ Next pointer</span><span style="color:#6c4cd9">■ Previous pointer</span><span style="color:#ff6b6b">■ HEAD</span><span style="color:#ff9f43">■ TAIL</span><span style="color:#27ae60">■ Bus here</span></div>
+  <div id="canvas"></div>
+  <div id="listline"></div>
+  <div class="bottom"><pre id="log"></pre><pre id="code"># The code of the last operation appears here</pre></div>
+</main>
+<aside>
+  <h2>⚙ Operations</h2>
+  <label>Station name</label><input id="name" placeholder="e.g. Universidades">
+  <label>Zone</label><input id="zone" placeholder="e.g. South">
+  <label>Index</label><input id="index" value="0" type="number">
+  <fieldset><legend>Insert</legend><button onclick="op('start')">At start</button><button onclick="op('end')">At end</button><button onclick="op('insert')">At index</button></fieldset>
+  <fieldset><legend>Delete</legend><button class="red" onclick="op('del_first')">First</button><button class="red" onclick="op('del_last')">Last</button><button class="red" onclick="op('delete')">Index</button></fieldset>
+  <fieldset><legend>Query</legend><button onclick="op('search')">Search</button><button onclick="op('forward')">Traverse →</button><button onclick="op('backward')">← Traverse</button></fieldset>
+  <fieldset class="two"><legend>Bus</legend><button onclick="op('go_back')">◀ Go back</button><button onclick="op('advance')">Advance ▶</button></fieldset>
+  <fieldset class="two"><legend>Route</legend><button class="grey" onclick="op('example')">Load example</button><button class="grey" onclick="op('empty')">Empty</button></fieldset>
+</aside>
+<script>
+const STEP=250,X0=150,Y=230,PW=44,DW=104,NW=44,H=64,D=10,TOT=192,HEIGHT=440,DELAY=450;
+const CODE={
+append:"new_node = Node(name)\nif self.head is None:\n    self.head = self.tail = new_node\nelse:\n    new_node.prev = self.tail\n    self.tail.next = new_node\n    self.tail = new_node\nself.length += 1",
+prepend:"new_node = Node(name)\nif self.head is None:\n    self.head = self.tail = new_node\nelse:\n    new_node.next = self.head\n    self.head.prev = new_node\n    self.head = new_node\nself.length += 1",
+insert:"follower = self.node_at(index)\nleader = follower.prev\nleader.next = new_node\nnew_node.prev = leader\nnew_node.next = follower\nfollower.prev = new_node\nself.length += 1",
+remove:"node = self.node_at(index)\nif node.prev: node.prev.next = node.next\nelse: self.head = node.next\nif node.next: node.next.prev = node.prev\nelse: self.tail = node.prev\nself.length -= 1",
+search:"node = self.head\nwhile node:\n    if text in node.name:\n        return i\n    node = node.next",
+traverse:"node = self.head      # forward\nwhile node:\n    node = node.next\n\nnodo = self.tail      # backward\nwhile node:\n    node = node.prev",
+next_stop:"if self.current.next:\n    self.current = self.current.next",
+prev_stop:"if self.current.prev:\n    self.current = self.current.prev"};
+let S={nodes:[],current:null}, busy=false, step=0;
+const $=id=>document.getElementById(id), sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+function shade(h,f){let c=[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+  c=c.map(v=>f>=1?Math.round(v+(255-v)*(f-1)):Math.round(v*f));
+  return "#"+c.map(v=>v.toString(16).padStart(2,"0")).join("")}
+function cube(x,y,w,h,f){const o='stroke="#46607a"';
+  return `<polygon points="${x},${y} ${x+D},${y-D} ${x+w+D},${y-D} ${x+w},${y}" fill="${shade(f,1.45)}" ${o}/>`+
+  `<polygon points="${x+w},${y} ${x+w+D},${y-D} ${x+w+D},${y+h-D} ${x+w},${y+h}" fill="${shade(f,.78)}" ${o}/>`+
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" ${o}/>`}
+const txt=(x,y,t,s,c,b)=>`<text x="${x}" y="${y}" text-anchor="middle" font-size="${s}" fill="${c}" ${b?'font-weight="700"':''}>${t}</text>`;
+const truncate=(t,n)=>t.length<=n?t:t.slice(0,n-1)+"…";
+const esc=t=>t.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const arrow=(x1,y1,x2,y2,c)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="2" marker-end="url(#f${c.slice(1)})"/>`;
+function tagBox(x,y,t,c,tx,ty){return cube(x,y,64,28,c)+txt(x+32,y+19,t,12,"#fff",1)+arrow(x+32,y+28,tx,ty,"#2c3e50")}
+function nullBox(x){return cube(x,Y+12,60,36,"#fff")+txt(x+30,Y+35,"NULL",12,"#555",1)}
+
+function draw(hl={}){
+  const n=S.nodes.length, W=Math.max(1000,X0+n*STEP+250); let s="";
+  s+=`<svg width="${W}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg"><defs>`+
+   ["2c3e50","6c4cd9"].map(c=>`<marker id="f${c}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#${c}"/></marker>`).join("")+`</defs>`;
+  s+=`<rect y="${Y+H+50}" width="${W}" height="${HEIGHT}" fill="#c9e6d2"/>`;
+  if(!n) s+=txt(420,Y+20,"Empty route  →  head = None,  tail = None",20,"#5b7a99");
+  S.nodes.forEach((nd,i)=>{const x=X0+i*STEP;
+    s+=`<ellipse cx="${x+TOT/2+8}" cy="${Y+H+13}" rx="${TOT/2}" ry="7" fill="#a9c9e6" opacity=".7"/>`;
+    if(i===S.current) s+=`<rect x="${x-6}" y="${Y-16}" width="${TOT+22}" height="${H+22}" fill="none" stroke="#2ecc71" stroke-width="3" stroke-dasharray="6 3"/>`+txt(x+TOT/2,Y+H+62,"▼ bus here",13,"#27ae60",1);
+    s+=cube(x,Y,PW,H,"#cbb8f5")+cube(x+PW,Y,DW,H,hl[i]||"#c4ecd0")+cube(x+PW+DW,Y,NW,H,"#ffe66d");
+    s+=txt(x+PW/2,Y+36,"ant",11,"#3b2a73")+txt(x+PW+DW+NW/2,Y+36,"sig",11,"#7a6200");
+    s+=txt(x+PW+DW/2,Y+27,esc(truncate(nd.name,12)),13,"#1e3a5f",1)+txt(x+PW+DW/2,Y+48,esc(truncate(nd.zone,14)),11,"#456");
+    s+=txt(x+TOT/2,Y+H+38,"index "+i,11,"#456");});
+  for(let i=0;i<n-1;i++){const x=X0+i*STEP;
+    s+=arrow(x+TOT+12,Y+18,x+STEP-2,Y+18,"#2c3e50");
+    s+=`<path d="M${x+STEP+8} ${Y+H-14} C${x+STEP-20} ${Y+H+22},${x+TOT+20} ${Y+H+22},${x+TOT+4} ${Y+H-14}" fill="none" stroke="#6c4cd9" stroke-width="2" marker-end="url(#f6c4cd9)"/>`;}
+  if(n){const tx=X0+(n-1)*STEP;
+    s+=nullBox(30)+nullBox(tx+TOT+70)+arrow(X0-2,Y+H-16,92,Y+H-16,"#6c4cd9")+arrow(tx+TOT+12,Y+18,tx+TOT+68,Y+18,"#2c3e50");
+    s+=tagBox(X0+8,Y-110,"HEAD","#ff6b6b",X0+22,Y-D)+tagBox(tx+120,Y-110,"TAIL","#ff9f43",tx+TOT-22,Y-D);}
+  $("canvas").innerHTML=s+"</svg>";
+  const nm=i=>S.nodes[i]?S.nodes[i].name:"None", a=S.current;
+  $("stats").textContent=`Nodes: ${n}   |   Head: ${nm(0)}   |   Tail: ${nm(n-1)}   |   Bus at: ${a==null?"None":nm(a)}`;
+  $("listline").textContent="None ⇄ "+S.nodes.map(x=>x.name).join(" ⇄ ")+(n?" ⇄ ":"")+"None";
+}
+function reveal(i){$("canvas").scrollLeft=Math.max(0,X0+i*STEP-350)}
+function log(m,err){const l=$("log");l.textContent+=`Step ${++step}: ${err?"⚠ ":""}${m}\n`;l.scrollTop=l.scrollHeight}
+
+async function applyState(d){
+  if(d.error){log(d.msg,true);return}
+  busy=true;
+  for(const i of d.path){draw({[i]:d.deleting&&i===d.path[d.path.length-1]?"#ff7b7b":"#ffd166"});reveal(i);await sleep(DELAY)}
+  S=d; draw(d.highlight!=null?{[d.highlight]:"#7cfc9a"}:{});
+  if(d.highlight!=null){reveal(d.highlight);await sleep(900);draw()}
+  if(d.current!=null&&d.highlight==null&&!d.path.length)reveal(d.current);
+  if(d.clear_fields){$("name").value="";$("zone").value=""}
+  if(d.msg)log(d.msg); if(d.code)$("code").textContent=CODE[d.code];
+  busy=false;
+}
+async function op(name){
+  if(busy)return;
+  const body={name:$("name").value,zone:$("zone").value,index:$("index").value};
+  try{const r=await fetch("/api/"+name,{method:"POST",body:JSON.stringify(body)});await applyState(await r.json())}
+  catch(e){log("Could not reach the Python server. Is main.py still running?",true)}
+}
+$("name").addEventListener("keydown",e=>{if(e.key==="Enter")op("end")});
+fetch("/api/state").then(r=>r.json()).then(d=>{S=d;draw()}).catch(()=>draw());
+</script>
+</body>
+</html>
